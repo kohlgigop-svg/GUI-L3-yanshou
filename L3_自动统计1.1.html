@@ -442,6 +442,8 @@ function runStats() {
   });
 
   // 2. 统计每列的非空数量
+  let totalNonEmptyCount = 0; // 新增：记录所有目标列的非空行数总和
+  
   const results = TARGET_COLUMNS.map(target => {
     const colIndex = colMapping[target.key];
     if (colIndex === undefined) return { ...target, count: 0, found: false };
@@ -455,13 +457,15 @@ function runStats() {
       }
     });
     
+    totalNonEmptyCount += nonEmptyCount; // 累加到总和中
+    
     return { ...target, count: nonEmptyCount, found: true };
   });
 
-  renderResult({ results, totalDataRows, missingCols, sheetName });
+  renderResult({ results, totalNonEmptyCount, totalDataRows, missingCols, sheetName });
 }
 
-function renderResult({ results, totalDataRows, missingCols, sheetName }) {
+function renderResult({ results, totalNonEmptyCount, totalDataRows, missingCols, sheetName }) {
   const now = new Date().toLocaleString('zh-CN', { hour12: false });
   document.getElementById('report-meta').textContent =
     `数据源 Sheet：${sheetName}  |  统计时间：${now}`;
@@ -471,11 +475,11 @@ function renderResult({ results, totalDataRows, missingCols, sheetName }) {
   summaryRow.innerHTML = `
     <div class="summary-card">
       <div class="s-num">${totalDataRows}</div>
-      <div class="s-label">表格数据总行数 (分母)</div>
+      <div class="s-label">表格数据总行数</div>
     </div>
     <div class="summary-card">
-      <div class="s-num" style="color:var(--primary)">${TARGET_COLUMNS.length}</div>
-      <div class="s-label">目标统计字段数</div>
+      <div class="s-num" style="color:var(--primary)">${totalNonEmptyCount}</div>
+      <div class="s-label">目标字段非空总和 (分母)</div>
     </div>
   `;
 
@@ -484,8 +488,8 @@ function renderResult({ results, totalDataRows, missingCols, sheetName }) {
   tbody.innerHTML = '';
   
   results.forEach(res => {
-    // 如果该列没找到，进度条置灰显示
-    const pct = totalDataRows > 0 ? (res.count / totalDataRows * 100) : 0;
+    // 现在的分母是这5列的非空值总和 (totalNonEmptyCount)
+    const pct = totalNonEmptyCount > 0 ? (res.count / totalNonEmptyCount * 100) : 0;
     const barColor = res.found ? res.barColor : '#cbd5e1';
     const displayCount = res.found ? res.count : '-';
     const displayPct = res.found ? `${pct.toFixed(2)}%` : '-';
