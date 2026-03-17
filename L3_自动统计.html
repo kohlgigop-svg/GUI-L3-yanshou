@@ -1,4 +1,4 @@
-<!-- 版本号：1.2；迭代时间：2026.3.17 -->
+<!-- 版本号：1.3，迭代时间：2026.3.17 -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -462,6 +462,33 @@ function renderResult({ results, totalNonEmptyCount, missingCols, projectIdVal, 
     `;
     tbody.appendChild(row);
   });
+
+  // --- 新增：异常占比汇总行 ---
+  let anomalyCount = 0;
+  let anomalyFound = false;
+  results.forEach(res => {
+    if (['task 完成情况:工程环境问题', 'task 完成情况:执行中连续黑屏超10屏', 'task 完成情况:task问题'].includes(res.key)) {
+      anomalyCount += res.count;
+      if (res.found) anomalyFound = true;
+    }
+  });
+
+  const anomalyPct = totalNonEmptyCount > 0 ? (anomalyCount / totalNonEmptyCount * 100) : 0;
+  const anomalyRow = document.createElement('tr');
+  anomalyRow.style.backgroundColor = '#fff1f2'; // 浅红色高亮背景
+  anomalyRow.innerHTML = `
+    <td><span class="tag" style="background:#ffe4e6; color:#e11d48; border: 1px solid #fda4af;">异常占比 (汇总)</span></td>
+    <td style="text-align:center;font-weight:700;font-size:1.1rem;color:#e11d48;">${anomalyFound ? anomalyCount : '-'}</td>
+    <td>
+      <div class="bar-wrap">
+        <div class="bar-bg" style="background:#fecdd3;">
+          <div class="bar-fill" style="width:${anomalyFound ? anomalyPct : 0}%;background:#e11d48"></div>
+        </div>
+      </div>
+    </td>
+    <td class="bar-pct" style="text-align:right;color:#e11d48;">${anomalyFound ? (anomalyPct.toFixed(2) + '%') : '-'}</td>
+  `;
+  tbody.appendChild(anomalyRow);
 
   // 缺失列提示
   const noticeEl = document.getElementById('missing-cols-notice');
