@@ -309,7 +309,40 @@ function normalize(s) {
   return String(s || '').replace(/[\s\u3000:：\-]/g, '').toLowerCase();
 }
 
+function isSkippedTaskValue(v) {
+  return String(v ?? '').trim() === '是';
+}
+
+function filterSkippedTaskRows(dataRows, taskIdColIdx, skipColIdx) {
+  if (taskIdColIdx === -1 || skipColIdx === -1) return dataRows;
+
+  const skippedTaskIds = new Set();
+  let currentTaskId = '';
+
+  dataRows.forEach(row => {
+    const rawTaskId = String(row[taskIdColIdx] ?? '').trim();
+    if (rawTaskId !== '') currentTaskId = rawTaskId;
+    if (currentTaskId && isSkippedTaskValue(row[skipColIdx])) {
+      skippedTaskIds.add(currentTaskId);
+    }
+  });
+
+  if (skippedTaskIds.size === 0) return dataRows;
+
+  const filteredRows = [];
+  currentTaskId = '';
+  dataRows.forEach(row => {
+    const rawTaskId = String(row[taskIdColIdx] ?? '').trim();
+    if (rawTaskId !== '') currentTaskId = rawTaskId;
+    if (currentTaskId && skippedTaskIds.has(currentTaskId)) return;
+    filteredRows.push(row);
+  });
+
+  return filteredRows;
+}
+
 let workbook = null;
+
 
 // ---- 拖拽 & 文件读取 ----
 const dropZone = document.getElementById('drop-zone');
@@ -359,6 +392,8 @@ function runStats(sheetName) {
   // 0. 提取“项目ID” 和 计算“任务id”唯一数
   const projectIdColIdx = headers.findIndex(h => normalize(h || '') === normalize('项目ID'));
   const taskIdColIdx = headers.findIndex(h => normalize(h || '') === normalize('任务id') || normalize(h || '') === normalize('任务ID'));
+  const skipColIdx = headers.findIndex(h => normalize(h || '') === normalize('是否跳过'));
+  const filteredDataRows = filterSkippedTaskRows(dataRows, taskIdColIdx, skipColIdx);
 
   let projectIdVal = '未知项目ID';
   if (projectIdColIdx !== -1) {
@@ -373,7 +408,7 @@ function runStats(sheetName) {
   if (taskIdColIdx !== -1) {
     // 去重去空
     const taskIds = new Set();
-    dataRows.forEach(r => {
+    filteredDataRows.forEach(r => {
       const val = String(r[taskIdColIdx] || '').trim();
       if (val !== '') {
         taskIds.add(val);
@@ -381,6 +416,7 @@ function runStats(sheetName) {
     });
     uniqueTaskCount = taskIds.size;
   }
+
 
   // 1. 查找目标列的索引
   const colMapping = {}; // targetKey -> columnIndex
@@ -408,10 +444,11 @@ function runStats(sheetName) {
     if (colIndex === undefined) return { ...target, count: 0, found: false };
     
     let nonEmptyCount = 0;
-    dataRows.forEach(row => {
+    filteredDataRows.forEach(row => {
       const val = String(row[colIndex] || '').trim();
       if (val !== '') nonEmptyCount++;
     });
+
     
     totalNonEmptyCount += nonEmptyCount;
     return { ...target, count: nonEmptyCount, found: true };

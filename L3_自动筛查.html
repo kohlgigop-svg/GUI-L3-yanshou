@@ -460,24 +460,64 @@ function runChecks(rows) {
     return row[key];
   }
 
-  // 按任务id分组（并进行向下填充处理：如果当前行的任务id为空，则继承上一行的任务id）
-  const groups = new Map(); // taskId → [rowObj, ...]
-  let currentTaskId = null;
-  
+  function normalizeTaskId(v) {
+    return isBlank(v, false) ? '' : String(v).trim();
+  }
+
+  function isSkippedTask(v) {
+    return String(v ?? '').trim() === '是';
+  }
+
+  const skippedTaskIds = new Set();
+  let currentTaskIdForSkip = null;
   for (const row of rows) {
     let tid = col(row, 2);
-    
+    if (isBlank(tid, false)) {
+      tid = currentTaskIdForSkip;
+    } else {
+      currentTaskIdForSkip = tid;
+    }
+
+    const normalizedTid = normalizeTaskId(tid);
+    if (normalizedTid && isSkippedTask(col(row, 7))) {
+      skippedTaskIds.add(normalizedTid);
+    }
+  }
+
+  const effectiveRows = [];
+  let currentTaskId = null;
+  for (const row of rows) {
+    let tid = col(row, 2);
+
     // 向下填充逻辑，任务ID不要求中文字符
     if (isBlank(tid, false)) {
       tid = currentTaskId;
     } else {
       currentTaskId = tid; // 更新为新的任务id
     }
-    
-    const key = isBlank(tid, false) ? '__blank__' : String(tid);
+
+    const normalizedTid = normalizeTaskId(tid);
+    if (normalizedTid && skippedTaskIds.has(normalizedTid)) continue;
+    effectiveRows.push(row);
+  }
+
+  // 按任务id分组（并进行向下填充处理：如果当前行的任务id为空，则继承上一行的任务id）
+  const groups = new Map(); // taskId → [rowObj, ...]
+  currentTaskId = null;
+  for (const row of effectiveRows) {
+    let tid = col(row, 2);
+    if (isBlank(tid, false)) {
+      tid = currentTaskId;
+    } else {
+      currentTaskId = tid;
+    }
+
+    const key = normalizeTaskId(tid) || '__blank__';
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
   }
+
+
 
   // 每条规则用 Map<taskId, Set<页数>> 记录，方便展示违规页
   function addViolation(map, tid, pageVal) {
@@ -623,7 +663,19 @@ function runChecks(rows) {
   r5.delete('__blank__'); r6.delete('__blank__');
   r7.delete('__blank__');
 
-  return { r1, r2, r3, r4, r5, r6, r7, all: allTids };
+  return {
+    r1,
+    r2,
+    r3,
+    r4,
+    r5,
+    r6,
+    r7,
+    all: allTids,
+    processedRowCount: effectiveRows.length,
+    skippedTaskCount: skippedTaskIds.size
+  };
+
 }
 
 let ignoredRules = new Set();
@@ -866,8 +918,11 @@ function processFile(file) {
       const res = runChecks(rows);
       currentRes = res;
       spinner.style.display = 'none';
-      statusText.textContent = `解析完成：共 ${rows.length} 行数据`;
+      statusText.textContent = res && res.skippedTaskCount > 0
+        ? `解析完成：原始 ${rows.length} 行，剔除 ${res.skippedTaskCount} 个跳过任务后检测 ${res.processedRowCount} 行`
+        : `解析完成：共 ${rows.length} 行数据`;
       renderResults();
+
     } catch(err) {
       spinner.style.display = 'none';
       statusText.textContent = '解析失败：' + err.message;
