@@ -178,7 +178,19 @@
     }
     .tag-id { font-size: 12px; font-weight: 700; color: #c53030; }
     .tag-pages { font-size: 11px; color: #e53e3e; opacity: .85; }
+    .tag-annotator { font-size: 11px; color: #4a5568; margin-top: 2px; }
+    .annotator-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+    .annotator-stat-item {
+      min-width: 150px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #f7fafc;
+      border: 1px solid #e2e8f0;
+    }
+    .annotator-stat-name { font-size: 13px; font-weight: 600; color: #2d3748; }
+    .annotator-stat-count { font-size: 12px; color: #4a5568; margin-top: 4px; }
     .no-issue { color: #48bb78; font-size: 13px; margin-top: 10px; }
+
 
     /* ── 复制提示 ── */
     .toast {
@@ -519,7 +531,22 @@ function runChecks(rows) {
 
 
 
+
+
+
+  const taskAnnotators = new Map();
+  for (const [tid, taskRows] of groups) {
+    if (tid === '__blank__') continue;
+    const annotators = [...new Set(
+      taskRows
+        .map(row => String(col(row, 5) ?? '').trim())
+        .filter(Boolean)
+    )];
+    taskAnnotators.set(tid, annotators.length > 0 ? annotators : ['未填写']);
+  }
+
   // 每条规则用 Map<taskId, Set<页数>> 记录，方便展示违规页
+
   function addViolation(map, tid, pageVal) {
     if (!map.has(tid)) map.set(tid, new Set());
     const rawStr = (pageVal === null || pageVal === undefined) ? '' : String(pageVal).trim();
@@ -672,9 +699,11 @@ function runChecks(rows) {
     r6,
     r7,
     all: allTids,
+    taskAnnotators,
     processedRowCount: effectiveRows.length,
     skippedTaskCount: skippedTaskIds.size
   };
+
 
 }
 
@@ -690,8 +719,9 @@ function renderResults() {
   const container = document.getElementById('results');
   container.innerHTML = '';
 
-  const { r1, r2, r3, r4, r5, r6, r7 } = res;
+  const { r1, r2, r3, r4, r5, r6, r7, taskAnnotators } = res;
   const ruleList = [r1, r2, r3, r4, r5, r6, r7];
+
   
   // 重新计算未被忽略的 allTids
   const activeAllTids = new Set();
@@ -704,8 +734,10 @@ function renderResults() {
   });
   
   const allArr = [...activeAllTids].sort((a, b) => parseFloat(a) - parseFloat(b) || a.localeCompare(b));
+  const getAnnotatorsById = (id) => taskAnnotators.get(id) || ['未填写'];
 
   // 汇总卡片
+
   const sumCard = document.createElement('div');
   sumCard.className = 'summary-card';
 
@@ -868,8 +900,13 @@ function renderResults() {
         const pageStr = pagesArr.length > 0 ? `第 ${pagesArr.join('、')} 页` : '页数未知';
         const tag = document.createElement('div');
         tag.className = 'rule-id-tag';
-        tag.innerHTML = `<span class="tag-id">${id}</span><span class="tag-pages">${pageStr}</span>`;
+        tag.innerHTML = `
+          <span class="tag-id">${id}</span>
+          <span class="tag-pages">${pageStr}</span>
+          <span class="tag-annotator">标注人：${getAnnotatorsById(id).join('、')}</span>
+        `;
         tagBox.appendChild(tag);
+
       }
       body.appendChild(tagBox);
     }
@@ -880,7 +917,52 @@ function renderResults() {
     // 有违规的默认展开（如果没被忽略）
     if (!isZero && !isIgnored) panel.classList.add('open');
   }
+
+  const annotatorCountMap = new Map();
+  allArr.forEach(id => {
+    getAnnotatorsById(id).forEach(name => {
+      annotatorCountMap.set(name, (annotatorCountMap.get(name) || 0) + 1);
+    });
+  });
+
+  const annotatorStatsArr = [...annotatorCountMap.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-CN'));
+
+  const statsCard = document.createElement('div');
+  statsCard.className = 'summary-card';
+
+  const statsTitle = document.createElement('h2');
+  statsTitle.innerHTML = `底部统计：异常数据中的标注人次数 <span class="badge">${annotatorStatsArr.length}</span>`;
+  statsCard.appendChild(statsTitle);
+
+  if (annotatorStatsArr.length === 0) {
+    const ok = document.createElement('div');
+    ok.className = 'no-issue';
+    ok.textContent = '当前无可统计的异常标注人数据';
+    statsCard.appendChild(ok);
+  } else {
+    const tip = document.createElement('div');
+    tip.style.cssText = 'font-size:12px;color:#718096;margin-bottom:12px;';
+    tip.textContent = '按当前未忽略规则下的去重异常任务 ID 统计';
+    statsCard.appendChild(tip);
+
+    const statBox = document.createElement('div');
+    statBox.className = 'annotator-stats';
+    annotatorStatsArr.forEach(([name, count]) => {
+      const item = document.createElement('div');
+      item.className = 'annotator-stat-item';
+      item.innerHTML = `
+        <div class="annotator-stat-name">${name}</div>
+        <div class="annotator-stat-count">出现 ${count} 次</div>
+      `;
+      statBox.appendChild(item);
+    });
+    statsCard.appendChild(statBox);
+  }
+
+  container.appendChild(statsCard);
 }
+
 
 // ════════════════════════════════════════════════════
 //   文件处理
