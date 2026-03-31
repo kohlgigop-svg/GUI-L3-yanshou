@@ -472,7 +472,12 @@ function runChecks(rows) {
     return row[key];
   }
 
+  const projectIdVal = rows
+    .map(row => String(col(row, 1) ?? '').trim())
+    .find(Boolean) || '未识别';
+
   function normalizeTaskId(v) {
+
     return isBlank(v, false) ? '' : String(v).trim();
   }
 
@@ -700,9 +705,11 @@ function runChecks(rows) {
     r7,
     all: allTids,
     taskAnnotators,
+    projectIdVal,
     processedRowCount: effectiveRows.length,
     skippedTaskCount: skippedTaskIds.size
   };
+
 
 
 }
@@ -719,8 +726,9 @@ function renderResults() {
   const container = document.getElementById('results');
   container.innerHTML = '';
 
-  const { r1, r2, r3, r4, r5, r6, r7, taskAnnotators } = res;
+  const { r1, r2, r3, r4, r5, r6, r7, taskAnnotators, projectIdVal } = res;
   const ruleList = [r1, r2, r3, r4, r5, r6, r7];
+
 
   
   // 重新计算未被忽略的 allTids
@@ -736,9 +744,18 @@ function renderResults() {
   const allArr = [...activeAllTids].sort((a, b) => parseFloat(a) - parseFloat(b) || a.localeCompare(b));
   const getAnnotatorsById = (id) => taskAnnotators.get(id) || ['未填写'];
 
+  const projectCard = document.createElement('div');
+  projectCard.className = 'summary-card';
+  projectCard.innerHTML = `
+    <div style="font-size:13px;color:#718096;">项目ID</div>
+    <div style="font-size:22px;font-weight:700;color:#2d3748;margin-top:6px;word-break:break-all;">${projectIdVal}</div>
+  `;
+  container.appendChild(projectCard);
+
   // 汇总卡片
 
   const sumCard = document.createElement('div');
+
   sumCard.className = 'summary-card';
 
   const h2 = document.createElement('h2');
