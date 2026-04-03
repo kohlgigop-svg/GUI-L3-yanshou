@@ -948,9 +948,27 @@ function renderResults() {
   const statsCard = document.createElement('div');
   statsCard.className = 'summary-card';
 
+  const statsHeader = document.createElement('div');
+  statsHeader.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;';
+  
   const statsTitle = document.createElement('h2');
+  statsTitle.style.marginBottom = '0';
   statsTitle.innerHTML = `底部统计：异常数据中的标注人次数 <span class="badge">${annotatorStatsArr.length}</span>`;
-  statsCard.appendChild(statsTitle);
+  statsHeader.appendChild(statsTitle);
+
+  if (annotatorStatsArr.length > 0) {
+    const copyStatsBtn = document.createElement('button');
+    copyStatsBtn.className = 'copy-all-btn';
+    copyStatsBtn.style.marginBottom = '0';
+    copyStatsBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg> 一键复制统计`;
+    copyStatsBtn.onclick = () => {
+      const tsv = annotatorStatsArr.map(([name, count]) => `${name}\t${count}`).join('\n');
+      copyText(tsv);
+    };
+    statsHeader.appendChild(copyStatsBtn);
+  }
+
+  statsCard.appendChild(statsHeader);
 
   if (annotatorStatsArr.length === 0) {
     const ok = document.createElement('div');
@@ -960,22 +978,35 @@ function renderResults() {
   } else {
     const tip = document.createElement('div');
     tip.style.cssText = 'font-size:12px;color:#718096;margin-bottom:12px;';
-    tip.textContent = '按当前未忽略规则下的去重异常任务 ID 统计';
+    tip.textContent = '按当前未忽略规则下的去重异常任务 ID 统计（可直接复制粘贴到 WPS 等表格软件中）';
     statsCard.appendChild(tip);
 
     const statBox = document.createElement('div');
-    statBox.className = 'annotator-stats';
-    annotatorStatsArr.forEach(([name, count]) => {
-      const item = document.createElement('div');
-      item.className = 'annotator-stat-item';
-      item.innerHTML = `
-        <div class="annotator-stat-name">${name}</div>
-        <div class="annotator-stat-count">出现 ${count} 次</div>
-      `;
-      statBox.appendChild(item);
-    });
+    statBox.style.cssText = 'max-width: 500px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;';
+    
+    const table = document.createElement('table');
+    table.style.cssText = 'width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;';
+    
+    table.innerHTML = `
+      <thead style="background: #f7fafc; border-bottom: 1px solid #e2e8f0;">
+        <tr>
+          <th style="padding: 10px 16px; font-weight: 600; color: #4a5568;">标注人 ID</th>
+          <th style="padding: 10px 16px; font-weight: 600; color: #4a5568; width: 120px;">出现次数</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${annotatorStatsArr.map(([name, count]) => `
+          <tr style="border-bottom: 1px solid #edf2f7; background: #fff;">
+            <td style="padding: 10px 16px; color: #2d3748;">${name}</td>
+            <td style="padding: 10px 16px; color: #c53030; font-weight: 600;">${count}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    `;
+    statBox.appendChild(table);
     statsCard.appendChild(statBox);
   }
+
 
   container.appendChild(statsCard);
 }
