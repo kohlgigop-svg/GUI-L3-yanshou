@@ -168,7 +168,69 @@
     .stats-table tr:last-child td { border-bottom: none; }
     .stats-table tr:hover td { background: #f8faff; }
 
+    .task-tables-container {
+      display: grid;
+      gap: 18px;
+      margin-top: 18px;
+    }
+    .task-table-card {
+      background: var(--card);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      padding: 22px 24px;
+      box-shadow: 0 2px 12px rgba(79,110,247,0.06);
+    }
+    .task-table-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .task-table-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .task-table-desc {
+      font-size: 0.84rem;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+    .task-table-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 72px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: var(--primary-light);
+      color: var(--primary);
+      font-size: 0.88rem;
+      font-weight: 700;
+    }
+    .task-table-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .task-detail-table th:nth-child(2),
+    .task-detail-table td:nth-child(2) {
+      white-space: nowrap;
+    }
+    .task-empty {
+      padding: 18px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.92rem;
+      background: #f8fafc;
+      border-radius: 10px;
+      border: 1px dashed var(--border);
+    }
+
     .tag {
+
       display: inline-block;
       padding: 3px 10px;
       border-radius: 20px;
@@ -290,7 +352,10 @@
       ⚠️ 以下预定义字段在表格中未找到对应列：<span id="missing-cols-list"></span>
     </div>
   </div>
+
+  <div id="task-tables-container" class="task-tables-container"></div>
 </div>
+
 
 <div id="toast">✅ 截图已复制到剪贴板</div>
 
@@ -341,7 +406,106 @@ function filterSkippedTaskRows(dataRows, taskIdColIdx, skipColIdx) {
   return filteredRows;
 }
 
+function getCellText(row, colIdx) {
+  if (colIdx === -1 || colIdx === undefined || colIdx === null) return '';
+  return String(row[colIdx] ?? '').trim();
+}
+
+function isSuccessfulTaskValue(v) {
+  const text = String(v ?? '').trim();
+  return text === '完全成功' || text === '任务成功';
+}
+
+function getTaskCompletionLabel(targetKey, cellVal) {
+  if (targetKey === 'task 完成情况:任务成功') return '完全成功';
+  return String(cellVal ?? '').trim() || String(targetKey).split(':').pop();
+}
+
+function sanitizeFileName(name) {
+  return String(name || '未命名')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .trim() || '未命名';
+}
+
+function downloadTaskTableFile(rows, fileName, sheetName) {
+  const aoa = [
+    ['task完成情况', '任务id', '任务名称'],
+    ...rows.map(item => [item.completion, item.taskId, item.taskName])
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, fileName);
+}
+
+function buildTaskTables(dataRows, taskIdColIdx, taskNameColIdx, colMapping) {
+
+  if (taskIdColIdx === -1) {
+    return { successTasks: [], failedTasks: [] };
+  }
+
+  const taskMap = new Map();
+  let currentTaskId = '';
+  let currentTaskName = '';
+
+  dataRows.forEach(row => {
+    const rawTaskId = getCellText(row, taskIdColIdx);
+    const rawTaskName = getCellText(row, taskNameColIdx);
+
+    if (rawTaskId) currentTaskId = rawTaskId;
+    if (rawTaskName) currentTaskName = rawTaskName;
+    if (!currentTaskId) return;
+
+    if (!taskMap.has(currentTaskId)) {
+      taskMap.set(currentTaskId, {
+        taskId: currentTaskId,
+        taskName: currentTaskName || '未填写',
+        statuses: []
+      });
+    }
+
+    const task = taskMap.get(currentTaskId);
+    if (currentTaskName) task.taskName = currentTaskName;
+
+    TARGET_COLUMNS.forEach(target => {
+      const colIndex = colMapping[target.key];
+      if (colIndex === undefined) return;
+
+      const cellVal = getCellText(row, colIndex);
+      if (!cellVal) return;
+
+      if (!task.statuses.some(item => item.key === target.key && item.value === cellVal)) {
+        task.statuses.push({ key: target.key, value: cellVal });
+      }
+    });
+  });
+
+  const successTasks = [];
+  const failedTasks = [];
+
+  taskMap.forEach(task => {
+    const statusLabels = task.statuses.map(item => getTaskCompletionLabel(item.key, item.value));
+    const hasSuccess = task.statuses.some(item => item.key === 'task 完成情况:任务成功' && isSuccessfulTaskValue(item.value));
+    const hasFailure = task.statuses.some(item => item.key !== 'task 完成情况:任务成功');
+
+    const rowData = {
+      completion: hasSuccess && !hasFailure ? '完全成功' : (statusLabels.length > 0 ? statusLabels.join('、') : '未填写'),
+      taskId: task.taskId,
+      taskName: task.taskName || '未填写'
+    };
+
+    if (hasSuccess && !hasFailure) {
+      successTasks.push(rowData);
+    } else {
+      failedTasks.push(rowData);
+    }
+  });
+
+  return { successTasks, failedTasks };
+}
+
 let workbook = null;
+
 
 
 // ---- 拖拽 & 文件读取 ----
@@ -392,8 +556,10 @@ function runStats(sheetName) {
   // 0. 提取“项目ID” 和 计算“任务id”唯一数
   const projectIdColIdx = headers.findIndex(h => normalize(h || '') === normalize('项目ID'));
   const taskIdColIdx = headers.findIndex(h => normalize(h || '') === normalize('任务id') || normalize(h || '') === normalize('任务ID'));
+  const taskNameColIdx = headers.findIndex(h => normalize(h || '') === normalize('任务名称'));
   const skipColIdx = headers.findIndex(h => normalize(h || '') === normalize('是否跳过'));
   const filteredDataRows = filterSkippedTaskRows(dataRows, taskIdColIdx, skipColIdx);
+
 
   let projectIdVal = '未知项目ID';
   if (projectIdColIdx !== -1) {
@@ -454,10 +620,125 @@ function runStats(sheetName) {
     return { ...target, count: nonEmptyCount, found: true };
   });
 
-  renderResult({ results, totalNonEmptyCount, missingCols, projectIdVal, uniqueTaskCount });
+  const { successTasks, failedTasks } = buildTaskTables(filteredDataRows, taskIdColIdx, taskNameColIdx, colMapping);
+
+  renderResult({
+    results,
+    totalNonEmptyCount,
+    missingCols,
+    projectIdVal,
+    uniqueTaskCount,
+    successTasks,
+    failedTasks
+  });
 }
 
-function renderResult({ results, totalNonEmptyCount, missingCols, projectIdVal, uniqueTaskCount }) {
+function renderTaskTables(successTasks, failedTasks, projectIdVal) {
+  const container = document.getElementById('task-tables-container');
+  container.innerHTML = '';
+  const safeProjectId = sanitizeFileName(projectIdVal);
+
+  const tableConfigs = [
+    {
+      title: '任务成功表格',
+      desc: '来自“task 完成情况:任务成功”为完全成功的任务，可直接预览与下载',
+      countLabel: '成功任务数',
+      rows: successTasks,
+      emptyText: '当前没有完全成功的任务数据',
+      fileName: `${safeProjectId}_任务成功表格.xlsx`,
+      sheetName: '任务成功'
+    },
+    {
+      title: '任务失败表格',
+      desc: '来自除完全成功外的其余任务，可直接预览与下载',
+      countLabel: '失败任务数',
+      rows: failedTasks,
+      emptyText: '当前没有失败任务数据',
+      fileName: `${safeProjectId}_任务失败表格.xlsx`,
+      sheetName: '任务失败'
+    }
+  ];
+
+  tableConfigs.forEach(config => {
+    const card = document.createElement('div');
+    card.className = 'task-table-card';
+
+    const head = document.createElement('div');
+    head.className = 'task-table-head';
+
+    const titleWrap = document.createElement('div');
+    titleWrap.innerHTML = `
+      <div class="task-table-title">${config.title}</div>
+      <div class="task-table-desc">${config.desc}</div>
+    `;
+    head.appendChild(titleWrap);
+
+    const actions = document.createElement('div');
+    actions.className = 'task-table-actions';
+
+    const count = document.createElement('div');
+    count.className = 'task-table-count';
+    count.textContent = `${config.countLabel}：${config.rows.length}`;
+    actions.appendChild(count);
+
+    if (config.rows.length > 0) {
+      const downloadBtn = document.createElement('button');
+      downloadBtn.className = 'btn btn-copy';
+      downloadBtn.type = 'button';
+      downloadBtn.innerHTML = `
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+        下载表格文件
+      `;
+      downloadBtn.onclick = () => downloadTaskTableFile(config.rows, config.fileName, config.sheetName);
+      actions.appendChild(downloadBtn);
+    }
+
+    head.appendChild(actions);
+    card.appendChild(head);
+
+    if (config.rows.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'task-empty';
+      empty.textContent = config.emptyText;
+      card.appendChild(empty);
+      container.appendChild(card);
+      return;
+    }
+
+    const wrap = document.createElement('div');
+    wrap.className = 'task-table-wrap';
+
+    const table = document.createElement('table');
+    table.className = 'stats-table task-detail-table';
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th style="min-width:160px;">task完成情况</th>
+          <th style="min-width:120px;">任务id</th>
+          <th>任务名称</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${config.rows.map(item => `
+          <tr>
+            <td>${item.completion}</td>
+            <td>${item.taskId}</td>
+            <td>${item.taskName}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    `;
+
+    wrap.appendChild(table);
+    card.appendChild(wrap);
+    container.appendChild(card);
+  });
+}
+
+function renderResult({ results, totalNonEmptyCount, missingCols, projectIdVal, uniqueTaskCount, successTasks, failedTasks }) {
+
+
+
   const now = new Date().toLocaleString('zh-CN', { hour12: false });
   document.getElementById('report-meta').textContent =
     `数据源：${projectIdVal}  |  统计时间：${now}`;
@@ -536,7 +817,11 @@ function renderResult({ results, totalNonEmptyCount, missingCols, projectIdVal, 
     noticeEl.style.display = 'none';
   }
 
+  renderTaskTables(successTasks, failedTasks, projectIdVal);
+
+
   document.getElementById('result-area').style.display = 'block';
+
   document.getElementById('result-area').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -583,9 +868,12 @@ function resetAll() {
   workbook = null;
   document.getElementById('file-name').textContent = '';
   document.getElementById('file-input').value = '';
+  document.getElementById('stats-body').innerHTML = '';
+  document.getElementById('task-tables-container').innerHTML = '';
   document.getElementById('result-area').style.display = 'none';
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+
 </script>
 </body>
 </html>
