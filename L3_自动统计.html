@@ -188,7 +188,14 @@
       margin-bottom: 14px;
       flex-wrap: wrap;
     }
+    .task-table-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
     .task-table-title {
+
       font-size: 1rem;
       font-weight: 700;
       color: var(--text);
@@ -681,7 +688,22 @@ function renderTaskTables(successTasks, failedTasks, projectIdVal) {
     count.textContent = `${config.countLabel}：${config.rows.length}`;
     actions.appendChild(count);
 
+    let wrap = null;
     if (config.rows.length > 0) {
+      wrap = document.createElement('div');
+      wrap.className = 'task-table-wrap';
+
+      const toggleBtn = document.createElement('button');
+      toggleBtn.className = 'btn btn-reset';
+      toggleBtn.type = 'button';
+      toggleBtn.textContent = '收起预览';
+      toggleBtn.onclick = () => {
+        const isCollapsed = wrap.style.display === 'none';
+        wrap.style.display = isCollapsed ? '' : 'none';
+        toggleBtn.textContent = isCollapsed ? '收起预览' : '展开预览';
+      };
+      actions.appendChild(toggleBtn);
+
       const downloadBtn = document.createElement('button');
       downloadBtn.className = 'btn btn-copy';
       downloadBtn.type = 'button';
@@ -705,8 +727,6 @@ function renderTaskTables(successTasks, failedTasks, projectIdVal) {
       return;
     }
 
-    const wrap = document.createElement('div');
-    wrap.className = 'task-table-wrap';
 
     const table = document.createElement('table');
     table.className = 'stats-table task-detail-table';
