@@ -428,7 +428,16 @@ function getTaskCompletionLabel(targetKey, cellVal) {
   return String(cellVal ?? '').trim() || String(targetKey).split(':').pop();
 }
 
+function cleanTaskName(name) {
+  const text = String(name ?? '').trim();
+  if (!text) return '';
+
+  const matched = text.match(/^(.*)_[A-Za-z0-9]{8}(?:-[A-Za-z0-9]{4}){3}-[A-Za-z0-9]{12}_[0-9]{8}_flowv[A-Za-z0-9_-]+$/);
+  return matched && matched[1] ? matched[1].trim() : text;
+}
+
 function sanitizeFileName(name) {
+
   return String(name || '未命名')
     .replace(/[\\/:*?"<>|]/g, '_')
     .trim() || '未命名';
@@ -457,11 +466,12 @@ function buildTaskTables(dataRows, taskIdColIdx, taskNameColIdx, colMapping) {
 
   dataRows.forEach(row => {
     const rawTaskId = getCellText(row, taskIdColIdx);
-    const rawTaskName = getCellText(row, taskNameColIdx);
+    const rawTaskName = cleanTaskName(getCellText(row, taskNameColIdx));
 
     if (rawTaskId) currentTaskId = rawTaskId;
     if (rawTaskName) currentTaskName = rawTaskName;
     if (!currentTaskId) return;
+
 
     if (!taskMap.has(currentTaskId)) {
       taskMap.set(currentTaskId, {
