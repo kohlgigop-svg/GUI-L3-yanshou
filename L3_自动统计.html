@@ -57,12 +57,12 @@
       border: 2.5px dashed var(--primary);
       border-radius: var(--radius);
       background: var(--primary-light);
-      padding: 48px 32px;
+      padding: 42px 32px 26px;
       text-align: center;
       cursor: pointer;
       transition: background 0.2s, border-color 0.2s;
-      max-width: 640px;
-      margin: 0 auto 32px;
+      max-width: 760px;
+      margin: 0 auto 18px;
       position: relative;
     }
     #drop-zone.drag-over {
@@ -73,12 +73,89 @@
     #drop-zone p { color: var(--muted); font-size: 0.95rem; margin-top: 6px; }
     #drop-zone strong { color: var(--primary); }
     #file-input { display: none; }
-    #file-name {
-      margin-top: 14px;
-      font-size: 0.88rem;
-      color: var(--primary);
-      font-weight: 600;
+    .file-queue-panel {
+      margin-top: 18px;
+      padding: 14px;
+      border-radius: 12px;
+      background: rgba(255,255,255,.82);
+      border: 1px solid #c7d2fe;
+      text-align: left;
     }
+    .file-queue-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+    .file-queue-summary {
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--primary);
+    }
+    .mini-btn {
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      font-size: 0.84rem;
+      cursor: pointer;
+      padding: 4px 6px;
+      border-radius: 6px;
+    }
+    .mini-btn:hover { background: #eef2ff; color: var(--primary); }
+    .file-list {
+      display: grid;
+      gap: 8px;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+    .file-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .file-item-main {
+      min-width: 0;
+      flex: 1;
+    }
+    .file-item-name {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text);
+      word-break: break-all;
+    }
+    .file-item-meta {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 3px;
+    }
+    .file-item-remove {
+      border: none;
+      background: #fee2e2;
+      color: #b91c1c;
+      padding: 6px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .file-item-remove:hover { background: #fecaca; }
+    .upload-action-bar {
+      max-width: 760px;
+      margin: 0 auto 32px;
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
 
     /* ---- 结果区 ---- */
     #result-area { display: none; max-width: 780px; margin: 0 auto; }
@@ -104,7 +181,9 @@
       gap: 6px;
     }
     .btn:hover { opacity: 0.85; }
+    .btn:disabled { cursor: not-allowed; opacity: 0.5; }
     .btn-copy { background: var(--primary); color: #fff; }
+
     .btn-reset { background: #e2e8f0; color: var(--text); }
 
     /* 统计卡片容器（截图目标） */
@@ -310,21 +389,36 @@
 </div>
 
 <h1>📊 情况分析报告工具</h1>
-<p class="subtitle">拖拽单表文件，一键生成情况分析报告</p>
+<p class="subtitle">可先连续加入多个文件，点击开始分析后统一生成情况分析报告</p>
 
 <!-- 拖拽区 -->
+
 <div id="drop-zone" onclick="document.getElementById('file-input').click()">
   <svg width="48" height="48" viewBox="0 0 48 48" fill="none">
     <rect width="48" height="48" rx="12" fill="#e0e7ff"/>
     <path d="M24 14v14M17 21l7-7 7 7" stroke="#4f6ef7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M14 34h20" stroke="#4f6ef7" stroke-width="2.5" stroke-linecap="round"/>
   </svg>
-  <p><strong>点击选择</strong>或将 .xlsx 文件拖入此区域</p>
-  <div id="file-name"></div>
-  <input type="file" id="file-input" accept=".xlsx,.xls,.csv" />
+  <p><strong>点击选择</strong>或将一个或多个 .xlsx 文件拖入此区域</p>
+  <div id="file-queue-panel" class="file-queue-panel" style="display:none;">
+    <div class="file-queue-head">
+      <div id="file-queue-summary" class="file-queue-summary"></div>
+      <button id="clear-files-btn" type="button" class="mini-btn">清空列表</button>
+    </div>
+    <div id="file-list" class="file-list"></div>
+  </div>
+  <input type="file" id="file-input" accept=".xlsx,.xls,.csv" multiple />
+</div>
+
+<div class="upload-action-bar">
+  <button class="btn btn-copy" id="start-analyze-btn" type="button" disabled>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+    开始分析
+  </button>
 </div>
 
 <!-- 结果区 -->
+
 <div id="result-area">
   <div class="action-bar">
     <button class="btn btn-reset" onclick="resetAll()">
@@ -445,8 +539,8 @@ function sanitizeFileName(name) {
 
 function downloadTaskTableFile(rows, fileName, sheetName) {
   const aoa = [
-    ['task完成情况', '任务id', '任务名称'],
-    ...rows.map(item => [item.completion, item.taskId, item.taskName])
+    ['task完成情况', '项目id', '任务id', '任务名称'],
+    ...rows.map(item => [item.completion, item.projectId, item.taskId, item.taskName])
   ];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
@@ -454,13 +548,9 @@ function downloadTaskTableFile(rows, fileName, sheetName) {
   XLSX.writeFile(wb, fileName);
 }
 
-function buildTaskTables(dataRows, taskIdColIdx, taskNameColIdx, colMapping) {
+function appendTasksToMap(dataRows, projectIdVal, taskIdColIdx, taskNameColIdx, colMapping, taskMap) {
+  if (taskIdColIdx === -1) return taskMap;
 
-  if (taskIdColIdx === -1) {
-    return { successTasks: [], failedTasks: [] };
-  }
-
-  const taskMap = new Map();
   let currentTaskId = '';
   let currentTaskName = '';
 
@@ -472,16 +562,17 @@ function buildTaskTables(dataRows, taskIdColIdx, taskNameColIdx, colMapping) {
     if (rawTaskName) currentTaskName = rawTaskName;
     if (!currentTaskId) return;
 
-
-    if (!taskMap.has(currentTaskId)) {
-      taskMap.set(currentTaskId, {
+    const taskMapKey = `${projectIdVal}__${currentTaskId}`;
+    if (!taskMap.has(taskMapKey)) {
+      taskMap.set(taskMapKey, {
+        projectId: projectIdVal || '未知项目ID',
         taskId: currentTaskId,
         taskName: currentTaskName || '未填写',
         statuses: []
       });
     }
 
-    const task = taskMap.get(currentTaskId);
+    const task = taskMap.get(taskMapKey);
     if (currentTaskName) task.taskName = currentTaskName;
 
     TARGET_COLUMNS.forEach(target => {
@@ -497,6 +588,10 @@ function buildTaskTables(dataRows, taskIdColIdx, taskNameColIdx, colMapping) {
     });
   });
 
+  return taskMap;
+}
+
+function finalizeTaskTables(taskMap) {
   const successTasks = [];
   const failedTasks = [];
 
@@ -507,6 +602,7 @@ function buildTaskTables(dataRows, taskIdColIdx, taskNameColIdx, colMapping) {
 
     const rowData = {
       completion: hasSuccess && !hasFailure ? '完全成功' : (statusLabels.length > 0 ? statusLabels.join('、') : '未填写'),
+      projectId: task.projectId || '未知项目ID',
       taskId: task.taskId,
       taskName: task.taskName || '未填写'
     };
@@ -518,100 +614,24 @@ function buildTaskTables(dataRows, taskIdColIdx, taskNameColIdx, colMapping) {
     }
   });
 
+  const sorter = (a, b) => String(a.taskId).localeCompare(String(b.taskId), 'zh-CN', { numeric: true });
+  successTasks.sort(sorter);
+  failedTasks.sort(sorter);
+
   return { successTasks, failedTasks };
 }
 
-let workbook = null;
-
-
-
-// ---- 拖拽 & 文件读取 ----
-const dropZone = document.getElementById('drop-zone');
-
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
-dropZone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropZone.classList.remove('drag-over');
-  const file = e.dataTransfer.files[0];
-  if (file) loadFile(file);
-});
-document.getElementById('file-input').addEventListener('change', e => {
-  if (e.target.files[0]) loadFile(e.target.files[0]);
-});
-
-function loadFile(file) {
-  document.getElementById('file-name').textContent = '📎 ' + file.name;
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      workbook = XLSX.read(e.target.result, { type: 'array' });
-      // 去除选sheet功能，直接读取第一个sheet并运行统计
-      const firstSheetName = workbook.SheetNames[0];
-      runStats(firstSheetName);
-    } catch(err) {
-      alert('文件解析失败，请确认是有效的 .xlsx 文件。\n' + err.message);
-    }
-  };
-  reader.readAsArrayBuffer(file);
-}
-
-// ---- 核心统计逻辑 ----
-function runStats(sheetName) {
-  const sheet = workbook.Sheets[sheetName];
-  // 将表格转换为二维数组，保留空字符串
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-
-  if (rows.length < 2) { 
-    alert('该 Sheet 数据不足（没有数据行），请检查。'); 
-    return; 
-  }
-
-  const headers = rows[0];
-  const dataRows = rows.slice(1);
-
-  // 0. 提取“项目ID” 和 计算“任务id”唯一数
-  const projectIdColIdx = headers.findIndex(h => normalize(h || '') === normalize('项目ID'));
-  const taskIdColIdx = headers.findIndex(h => normalize(h || '') === normalize('任务id') || normalize(h || '') === normalize('任务ID'));
-  const taskNameColIdx = headers.findIndex(h => normalize(h || '') === normalize('任务名称'));
-  const skipColIdx = headers.findIndex(h => normalize(h || '') === normalize('是否跳过'));
-  const filteredDataRows = filterSkippedTaskRows(dataRows, taskIdColIdx, skipColIdx);
-
-
-  let projectIdVal = '未知项目ID';
-  if (projectIdColIdx !== -1) {
-    // 找第一个非空的项目ID
-    const foundRow = dataRows.find(r => String(r[projectIdColIdx] || '').trim() !== '');
-    if (foundRow) {
-      projectIdVal = String(foundRow[projectIdColIdx]).trim();
-    }
-  }
-
-  let uniqueTaskCount = 0;
-  if (taskIdColIdx !== -1) {
-    // 去重去空
-    const taskIds = new Set();
-    filteredDataRows.forEach(r => {
-      const val = String(r[taskIdColIdx] || '').trim();
-      if (val !== '') {
-        taskIds.add(val);
-      }
-    });
-    uniqueTaskCount = taskIds.size;
-  }
-
-
-  // 1. 查找目标列的索引
-  const colMapping = {}; // targetKey -> columnIndex
+function buildColumnMapping(headers) {
+  const colMapping = {};
   const missingCols = [];
-  
+
   TARGET_COLUMNS.forEach(target => {
     const normTarget = normalize(target.key);
     const colIndex = headers.findIndex(h => {
       const normH = normalize(h || '');
       return normH.includes(normTarget) || normTarget.includes(normH);
     });
-    
+
     if (colIndex !== -1) {
       colMapping[target.key] = colIndex;
     } else {
@@ -619,46 +639,265 @@ function runStats(sheetName) {
     }
   });
 
-  // 2. 统计每列的非空数量
-  let totalNonEmptyCount = 0;
-  
-  const results = TARGET_COLUMNS.map(target => {
-    const colIndex = colMapping[target.key];
-    if (colIndex === undefined) return { ...target, count: 0, found: false };
-    
-    let nonEmptyCount = 0;
-    filteredDataRows.forEach(row => {
-      const val = String(row[colIndex] || '').trim();
-      if (val !== '') nonEmptyCount++;
-    });
+  return { colMapping, missingCols };
+}
 
-    
-    totalNonEmptyCount += nonEmptyCount;
-    return { ...target, count: nonEmptyCount, found: true };
-  });
+function formatProjectDisplay(projectIds, fileCount) {
+  const uniqueProjectIds = [...new Set(projectIds.filter(Boolean))];
+  if (uniqueProjectIds.length === 0) return fileCount > 1 ? '未识别项目ID' : '未知项目ID';
+  if (uniqueProjectIds.length === 1) return uniqueProjectIds[0];
+  if (uniqueProjectIds.length <= 3) return uniqueProjectIds.join('、');
+  return `${uniqueProjectIds.slice(0, 3).join('、')} 等 ${uniqueProjectIds.length} 个项目`;
+}
 
-  const { successTasks, failedTasks } = buildTaskTables(filteredDataRows, taskIdColIdx, taskNameColIdx, colMapping);
+function buildDownloadBaseName(projectIds, fileCount) {
+  const uniqueProjectIds = [...new Set(projectIds.filter(Boolean))];
+  if (fileCount === 1) return uniqueProjectIds[0] || '未知项目ID';
+  if (uniqueProjectIds.length === 1) return `${uniqueProjectIds[0]}_${fileCount}文件汇总`;
+  return `${fileCount}文件汇总`;
+}
 
-  renderResult({
-    results,
-    totalNonEmptyCount,
-    missingCols,
-    projectIdVal,
-    uniqueTaskCount,
-    successTasks,
-    failedTasks
+function isSpreadsheetFile(file) {
+  return /\.(xlsx|xls|csv)$/i.test(file.name || '');
+}
+
+function getFileKey(file) {
+  return `${file.name}__${file.size}__${file.lastModified}`;
+}
+
+function formatFileSize(size) {
+  if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(2)} MB`;
+  if (size >= 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${size} B`;
+}
+
+let uploadedFiles = [];
+
+// ---- 拖拽 & 文件列表 ----
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const fileQueuePanel = document.getElementById('file-queue-panel');
+const fileQueueSummary = document.getElementById('file-queue-summary');
+const fileList = document.getElementById('file-list');
+const clearFilesBtn = document.getElementById('clear-files-btn');
+const startAnalyzeBtn = document.getElementById('start-analyze-btn');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  addFiles(Array.from(e.dataTransfer.files || []));
+});
+fileInput.addEventListener('change', e => {
+  addFiles(Array.from(e.target.files || []));
+  e.target.value = '';
+});
+fileQueuePanel.addEventListener('click', e => e.stopPropagation());
+clearFilesBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  uploadedFiles = [];
+  renderFileQueue();
+});
+startAnalyzeBtn.addEventListener('click', startAnalysis);
+renderFileQueue();
+
+function renderFileQueue() {
+
+  const hasFiles = uploadedFiles.length > 0;
+  fileQueuePanel.style.display = hasFiles ? 'block' : 'none';
+  startAnalyzeBtn.disabled = !hasFiles;
+  clearFilesBtn.disabled = !hasFiles;
+  fileList.innerHTML = '';
+
+  if (!hasFiles) return;
+
+  fileQueueSummary.textContent = `已添加 ${uploadedFiles.length} 个文件，点击“开始分析”后统一处理`;
+
+  uploadedFiles.forEach((file, index) => {
+    const item = document.createElement('div');
+    item.className = 'file-item';
+    item.innerHTML = `
+      <div class="file-item-main">
+        <div class="file-item-name">${file.name}</div>
+        <div class="file-item-meta">${formatFileSize(file.size)}</div>
+      </div>
+      <button type="button" class="file-item-remove">移除</button>
+    `;
+
+    item.querySelector('.file-item-remove').onclick = (e) => {
+      e.stopPropagation();
+      uploadedFiles.splice(index, 1);
+      renderFileQueue();
+    };
+
+    fileList.appendChild(item);
   });
 }
 
-function renderTaskTables(successTasks, failedTasks, projectIdVal) {
+function addFiles(files) {
+  const validFiles = files.filter(isSpreadsheetFile);
+  if (files.length > 0 && validFiles.length === 0) {
+    alert('请选择 .xlsx、.xls 或 .csv 文件。');
+    return;
+  }
+
+  const existingKeys = new Set(uploadedFiles.map(getFileKey));
+  let addedCount = 0;
+
+  validFiles.forEach(file => {
+    const fileKey = getFileKey(file);
+    if (existingKeys.has(fileKey)) return;
+    uploadedFiles.push(file);
+    existingKeys.add(fileKey);
+    addedCount++;
+  });
+
+  renderFileQueue();
+
+  if (validFiles.length > 0 && addedCount === 0) {
+    showToast('ℹ️ 文件已在列表中，无需重复添加');
+  }
+}
+
+function readWorkbookFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        resolve(XLSX.read(e.target.result, { type: 'array' }));
+      } catch (err) {
+        reject(new Error(`${file.name} 解析失败，请确认是有效的 .xlsx 文件。\n${err.message}`));
+      }
+    };
+    reader.onerror = () => reject(new Error(`${file.name} 读取失败，请重试。`));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function createAggregateState() {
+  return {
+    fileCount: 0,
+    projectIds: [],
+    uniqueTaskIds: new Set(),
+    countMap: Object.fromEntries(TARGET_COLUMNS.map(target => [target.key, 0])),
+    foundKeys: new Set(),
+    totalNonEmptyCount: 0,
+    missingCols: [],
+    taskMap: new Map()
+  };
+}
+
+function analyzeWorkbookRows(rows, fileName, aggregate) {
+  if (rows.length < 2) {
+    throw new Error(`${fileName} 数据不足（没有数据行），请检查。`);
+  }
+
+  const headers = rows[0];
+  const dataRows = rows.slice(1);
+  const projectIdColIdx = headers.findIndex(h => normalize(h || '') === normalize('项目ID'));
+  const taskIdColIdx = headers.findIndex(h => normalize(h || '') === normalize('任务id') || normalize(h || '') === normalize('任务ID'));
+  const taskNameColIdx = headers.findIndex(h => normalize(h || '') === normalize('任务名称'));
+  const skipColIdx = headers.findIndex(h => normalize(h || '') === normalize('是否跳过'));
+  const filteredDataRows = filterSkippedTaskRows(dataRows, taskIdColIdx, skipColIdx);
+
+  let projectIdVal = '未知项目ID';
+  if (projectIdColIdx !== -1) {
+    const foundRow = dataRows.find(r => String(r[projectIdColIdx] || '').trim() !== '');
+    if (foundRow) {
+      projectIdVal = String(foundRow[projectIdColIdx]).trim();
+    }
+  }
+
+  aggregate.fileCount += 1;
+  aggregate.projectIds.push(projectIdVal);
+
+  if (taskIdColIdx !== -1) {
+    let currentTaskId = '';
+    filteredDataRows.forEach(row => {
+      const rawTaskId = getCellText(row, taskIdColIdx);
+      if (rawTaskId) currentTaskId = rawTaskId;
+      if (currentTaskId) aggregate.uniqueTaskIds.add(currentTaskId);
+    });
+  }
+
+  const { colMapping, missingCols } = buildColumnMapping(headers);
+  if (missingCols.length > 0) {
+    aggregate.missingCols.push(`${fileName}：${missingCols.join('、')}`);
+  }
+
+  TARGET_COLUMNS.forEach(target => {
+    const colIndex = colMapping[target.key];
+    if (colIndex === undefined) return;
+
+    aggregate.foundKeys.add(target.key);
+    filteredDataRows.forEach(row => {
+      const val = getCellText(row, colIndex);
+      if (!val) return;
+      aggregate.countMap[target.key] += 1;
+      aggregate.totalNonEmptyCount += 1;
+    });
+  });
+
+  appendTasksToMap(filteredDataRows, projectIdVal, taskIdColIdx, taskNameColIdx, colMapping, aggregate.taskMap);
+}
+
+async function startAnalysis() {
+  if (uploadedFiles.length === 0) return;
+
+  const originalHtml = startAnalyzeBtn.innerHTML;
+  startAnalyzeBtn.disabled = true;
+  startAnalyzeBtn.innerHTML = `
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4"/><path d="m19.07 4.93-2.83 2.83"/><path d="M22 12h-4"/><path d="m19.07 19.07-2.83-2.83"/><path d="M12 22v-4"/><path d="m4.93 19.07 2.83-2.83"/><path d="M2 12h4"/><path d="m4.93 4.93 2.83 2.83"/></svg>
+    分析中...
+  `;
+
+  try {
+    const aggregate = createAggregateState();
+
+    for (const file of uploadedFiles) {
+      const workbook = await readWorkbookFromFile(file);
+      const firstSheetName = workbook.SheetNames[0];
+      const sheet = workbook.Sheets[firstSheetName];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+      analyzeWorkbookRows(rows, file.name, aggregate);
+    }
+
+    const results = TARGET_COLUMNS.map(target => ({
+      ...target,
+      count: aggregate.countMap[target.key],
+      found: aggregate.foundKeys.has(target.key)
+    }));
+    const { successTasks, failedTasks } = finalizeTaskTables(aggregate.taskMap);
+
+    renderResult({
+      results,
+      totalNonEmptyCount: aggregate.totalNonEmptyCount,
+      missingCols: aggregate.missingCols,
+      projectIdVal: formatProjectDisplay(aggregate.projectIds, aggregate.fileCount),
+      uniqueTaskCount: aggregate.uniqueTaskIds.size,
+      successTasks,
+      failedTasks,
+      fileCount: aggregate.fileCount,
+      downloadBaseName: buildDownloadBaseName(aggregate.projectIds, aggregate.fileCount)
+    });
+  } catch (err) {
+    alert(err.message);
+  } finally {
+    startAnalyzeBtn.innerHTML = originalHtml;
+    startAnalyzeBtn.disabled = uploadedFiles.length === 0;
+  }
+}
+
+function renderTaskTables(successTasks, failedTasks, downloadBaseName) {
   const container = document.getElementById('task-tables-container');
   container.innerHTML = '';
-  const safeProjectId = sanitizeFileName(projectIdVal);
+  const safeProjectId = sanitizeFileName(downloadBaseName);
 
   const tableConfigs = [
     {
       title: '任务成功表格',
-      desc: '来自“task 完成情况:任务成功”为完全成功的任务，可直接预览与下载',
+      desc: '来自本次分析中“task 完成情况:任务成功”为完全成功的任务，可直接预览与下载',
       countLabel: '成功任务数',
       rows: successTasks,
       emptyText: '当前没有完全成功的任务数据',
@@ -667,7 +906,7 @@ function renderTaskTables(successTasks, failedTasks, projectIdVal) {
     },
     {
       title: '任务失败表格',
-      desc: '来自除完全成功外的其余任务，可直接预览与下载',
+      desc: '来自本次分析中除完全成功外的其余任务，可直接预览与下载',
       countLabel: '失败任务数',
       rows: failedTasks,
       emptyText: '当前没有失败任务数据',
@@ -737,13 +976,13 @@ function renderTaskTables(successTasks, failedTasks, projectIdVal) {
       return;
     }
 
-
     const table = document.createElement('table');
     table.className = 'stats-table task-detail-table';
     table.innerHTML = `
       <thead>
         <tr>
           <th style="min-width:160px;">task完成情况</th>
+          <th style="min-width:120px;">项目id</th>
           <th style="min-width:120px;">任务id</th>
           <th>任务名称</th>
         </tr>
@@ -752,6 +991,7 @@ function renderTaskTables(successTasks, failedTasks, projectIdVal) {
         ${config.rows.map(item => `
           <tr>
             <td>${item.completion}</td>
+            <td>${item.projectId}</td>
             <td>${item.taskId}</td>
             <td>${item.taskName}</td>
           </tr>
@@ -765,37 +1005,36 @@ function renderTaskTables(successTasks, failedTasks, projectIdVal) {
   });
 }
 
-function renderResult({ results, totalNonEmptyCount, missingCols, projectIdVal, uniqueTaskCount, successTasks, failedTasks }) {
-
-
-
+function renderResult({ results, totalNonEmptyCount, missingCols, projectIdVal, uniqueTaskCount, successTasks, failedTasks, fileCount, downloadBaseName }) {
   const now = new Date().toLocaleString('zh-CN', { hour12: false });
-  document.getElementById('report-meta').textContent =
-    `数据源：${projectIdVal}  |  统计时间：${now}`;
+  document.getElementById('report-meta').textContent = fileCount > 1
+    ? `数据源：共 ${fileCount} 个文件｜项目ID：${projectIdVal}｜统计时间：${now}`
+    : `数据源：${projectIdVal}｜统计时间：${now}`;
 
-  // 汇总行：仅显示 队列数据量
   const summaryRow = document.getElementById('summary-row');
   summaryRow.innerHTML = `
+    <div class="summary-card" style="max-width: 200px;">
+      <div class="s-num">${fileCount}</div>
+      <div class="s-label">分析文件数</div>
+    </div>
     <div class="summary-card" style="max-width: 260px;">
       <div class="s-num">${uniqueTaskCount}</div>
       <div class="s-label">队列数据量</div>
     </div>
   `;
 
-  // 明细表格
   const tbody = document.getElementById('stats-body');
   tbody.innerHTML = '';
-  
+
   results.forEach(res => {
-    // 分母依然是这5列的非空值总和 (totalNonEmptyCount)
     const pct = totalNonEmptyCount > 0 ? (res.count / totalNonEmptyCount * 100) : 0;
     const barColor = res.found ? res.barColor : '#cbd5e1';
     const displayCount = res.found ? res.count : '-';
     const displayPct = res.found ? `${pct.toFixed(2)}%` : '-';
-    
+
     const row = document.createElement('tr');
     if (!res.found) row.style.opacity = '0.6';
-    
+
     row.innerHTML = `
       <td><span class="tag ${res.tagClass}">${res.key}</span></td>
       <td style="text-align:center;font-weight:700;font-size:1.1rem">${displayCount}</td>
@@ -811,7 +1050,6 @@ function renderResult({ results, totalNonEmptyCount, missingCols, projectIdVal, 
     tbody.appendChild(row);
   });
 
-  // --- 新增：异常占比汇总行 ---
   let anomalyCount = 0;
   let anomalyFound = false;
   results.forEach(res => {
@@ -823,7 +1061,7 @@ function renderResult({ results, totalNonEmptyCount, missingCols, projectIdVal, 
 
   const anomalyPct = totalNonEmptyCount > 0 ? (anomalyCount / totalNonEmptyCount * 100) : 0;
   const anomalyRow = document.createElement('tr');
-  anomalyRow.style.backgroundColor = '#fff1f2'; // 浅红色高亮背景
+  anomalyRow.style.backgroundColor = '#fff1f2';
   anomalyRow.innerHTML = `
     <td><span class="tag" style="background:#ffe4e6; color:#e11d48; border: 1px solid #fda4af;">异常占比 (汇总)</span></td>
     <td style="text-align:center;font-weight:700;font-size:1.1rem;color:#e11d48;">${anomalyFound ? anomalyCount : '-'}</td>
@@ -838,24 +1076,22 @@ function renderResult({ results, totalNonEmptyCount, missingCols, projectIdVal, 
   `;
   tbody.appendChild(anomalyRow);
 
-  // 缺失列提示
   const noticeEl = document.getElementById('missing-cols-notice');
   if (missingCols.length > 0) {
-    document.getElementById('missing-cols-list').textContent = missingCols.join('，');
+    document.getElementById('missing-cols-list').textContent = missingCols.join('； ');
     noticeEl.style.display = 'block';
   } else {
     noticeEl.style.display = 'none';
   }
 
-  renderTaskTables(successTasks, failedTasks, projectIdVal);
-
+  renderTaskTables(successTasks, failedTasks, downloadBaseName);
 
   document.getElementById('result-area').style.display = 'block';
-
   document.getElementById('result-area').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ---- 截图复制 ----
+
 async function copyScreenshot() {
   const target = document.getElementById('snapshot-target');
   try {
@@ -895,14 +1131,19 @@ function showToast(msg) {
 
 // ---- 重置 ----
 function resetAll() {
-  workbook = null;
-  document.getElementById('file-name').textContent = '';
-  document.getElementById('file-input').value = '';
+  uploadedFiles = [];
+  fileInput.value = '';
+  renderFileQueue();
   document.getElementById('stats-body').innerHTML = '';
+  document.getElementById('summary-row').innerHTML = '';
   document.getElementById('task-tables-container').innerHTML = '';
+  document.getElementById('missing-cols-list').textContent = '';
+  document.getElementById('missing-cols-notice').style.display = 'none';
+  document.getElementById('report-meta').textContent = '';
   document.getElementById('result-area').style.display = 'none';
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+
 
 </script>
 </body>
