@@ -594,11 +594,34 @@ function appendTasksToMap(dataRows, projectIdVal, taskIdColIdx, taskNameColIdx, 
 function finalizeTaskTables(taskMap) {
   const successTasks = [];
   const failedTasks = [];
+  const countMap = Object.fromEntries(TARGET_COLUMNS.map(target => [target.key, 0]));
+  const anomalyKeys = new Set([
+    'task 完成情况:工程环境问题',
+    'task 完成情况:执行中连续黑屏超10屏',
+    'task 完成情况:task问题'
+  ]);
+  let anomalyTaskCount = 0;
 
   taskMap.forEach(task => {
     const statusLabels = task.statuses.map(item => getTaskCompletionLabel(item.key, item.value));
     const hasSuccess = task.statuses.some(item => item.key === 'task 完成情况:任务成功' && isSuccessfulTaskValue(item.value));
-    const hasFailure = task.statuses.some(item => item.key !== 'task 完成情况:任务成功');
+    const taskStatusKeys = new Set(task.statuses.map(item => item.key));
+    const hasFailure = [...taskStatusKeys].some(key => key !== 'task 完成情况:任务成功');
+
+    if (hasSuccess && !hasFailure) {
+      countMap['task 完成情况:任务成功'] += 1;
+    }
+
+    TARGET_COLUMNS.forEach(target => {
+      if (target.key === 'task 完成情况:任务成功') return;
+      if (taskStatusKeys.has(target.key)) {
+        countMap[target.key] += 1;
+      }
+    });
+
+    if ([...anomalyKeys].some(key => taskStatusKeys.has(key))) {
+      anomalyTaskCount += 1;
+    }
 
     const rowData = {
       completion: hasSuccess && !hasFailure ? '完全成功' : (statusLabels.length > 0 ? statusLabels.join('、') : '未填写'),
@@ -618,7 +641,13 @@ function finalizeTaskTables(taskMap) {
   successTasks.sort(sorter);
   failedTasks.sort(sorter);
 
-  return { successTasks, failedTasks };
+  return {
+    successTasks,
+    failedTasks,
+    countMap,
+    totalTaskCount: taskMap.size,
+    anomalyTaskCount
+  };
 }
 
 function buildColumnMapping(headers) {
@@ -863,19 +892,20 @@ async function startAnalysis() {
       analyzeWorkbookRows(rows, file.name, aggregate);
     }
 
+    const { successTasks, failedTasks, countMap, totalTaskCount, anomalyTaskCount } = finalizeTaskTables(aggregate.taskMap);
     const results = TARGET_COLUMNS.map(target => ({
       ...target,
-      count: aggregate.countMap[target.key],
+      count: countMap[target.key],
       found: aggregate.foundKeys.has(target.key)
     }));
-    const { successTasks, failedTasks } = finalizeTaskTables(aggregate.taskMap);
 
     renderResult({
       results,
-      totalNonEmptyCount: aggregate.totalNonEmptyCount,
+      totalTaskCount,
+      anomalyTaskCount,
       missingCols: aggregate.missingCols,
       projectIdVal: formatProjectDisplay(aggregate.projectIds, aggregate.fileCount),
-      uniqueTaskCount: aggregate.uniqueTaskIds.size,
+      uniqueTaskCount: totalTaskCount,
       successTasks,
       failedTasks,
       fileCount: aggregate.fileCount,
@@ -1005,7 +1035,7 @@ function renderTaskTables(successTasks, failedTasks, downloadBaseName) {
   });
 }
 
-function renderResult({ results, totalNonEmptyCount, missingCols, projectIdVal, uniqueTaskCount, successTasks, failedTasks, fileCount, downloadBaseName }) {
+function renderResult({ results, totalTaskCount, anomalyTaskCount, missingCols, projectIdVal, uniqueTaskCount, successTasks, failedTasks, fileCount, downloadBaseName }) {
   const now = new Date().toLocaleString('zh-CN', { hour12: false });
   document.getElementById('report-meta').textContent = fileCount > 1
     ? `数据源：共 ${fileCount} 个文件｜项目ID：${projectIdVal}｜统计时间：${now}`
@@ -1027,7 +1057,7 @@ function renderResult({ results, totalNonEmptyCount, missingCols, projectIdVal, 
   tbody.innerHTML = '';
 
   results.forEach(res => {
-    const pct = totalNonEmptyCount > 0 ? (res.count / totalNonEmptyCount * 100) : 0;
+    const pct = totalTaskCount > 0 ? (res.count / totalTaskCount * 100) : 0;
     const barColor = res.found ? res.barColor : '#cbd5e1';
     const displayCount = res.found ? res.count : '-';
     const displayPct = res.found ? `${pct.toFixed(2)}%` : '-';
@@ -1050,21 +1080,13 @@ function renderResult({ results, totalNonEmptyCount, missingCols, projectIdVal, 
     tbody.appendChild(row);
   });
 
-  let anomalyCount = 0;
-  let anomalyFound = false;
-  results.forEach(res => {
-    if (['task 完成情况:工程环境问题', 'task 完成情况:执行中连续黑屏超10屏', 'task 完成情况:task问题'].includes(res.key)) {
-      anomalyCount += res.count;
-      if (res.found) anomalyFound = true;
-    }
-  });
-
-  const anomalyPct = totalNonEmptyCount > 0 ? (anomalyCount / totalNonEmptyCount * 100) : 0;
+  const anomalyFound = results.some(res => ['task 完成情况:工程环境问题', 'task 完成情况:执行中连续黑屏超10屏', 'task 完成情况:task问题'].includes(res.key) && res.found);
+  const anomalyPct = totalTaskCount > 0 ? (anomalyTaskCount / totalTaskCount * 100) : 0;
   const anomalyRow = document.createElement('tr');
   anomalyRow.style.backgroundColor = '#fff1f2';
   anomalyRow.innerHTML = `
     <td><span class="tag" style="background:#ffe4e6; color:#e11d48; border: 1px solid #fda4af;">异常占比 (汇总)</span></td>
-    <td style="text-align:center;font-weight:700;font-size:1.1rem;color:#e11d48;">${anomalyFound ? anomalyCount : '-'}</td>
+    <td style="text-align:center;font-weight:700;font-size:1.1rem;color:#e11d48;">${anomalyFound ? anomalyTaskCount : '-'}</td>
     <td>
       <div class="bar-wrap">
         <div class="bar-bg" style="background:#fecdd3;">
