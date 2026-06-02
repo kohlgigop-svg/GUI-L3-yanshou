@@ -814,8 +814,8 @@ function createAggregateState() {
     totalNonEmptyCount: 0,
     missingCols: [],
     taskMap: new Map(),
-    stepAccuracyNumerator: 0,
-    totalDataRowCount: 0
+    stepAccuracyCorrectCount: 0,
+    stepAccuracyBaseCount: 0
   };
 }
 
@@ -831,7 +831,9 @@ function analyzeWorkbookRows(rows, fileName, aggregate) {
   const taskNameColIdx = headers.findIndex(h => normalize(h || '') === normalize('任务名称'));
   const skipColIdx = headers.findIndex(h => normalize(h || '') === normalize('是否跳过'));
   const stepCorrectColIdx = headers.findIndex(h => normalize(h || '') === normalize('step 正确性判断:正确'));
+  const stepIncorrectColIdx = headers.findIndex(h => normalize(h || '') === normalize('step 正确性判断:不正确'));
   const stepReturnColIdx = headers.findIndex(h => normalize(h || '') === normalize('step 正确性判断:错误页面引导点击返回了'));
+  const stepAfterWrongColIdx = headers.findIndex(h => normalize(h || '') === normalize('step 正确性判断:此页之后step均错误'));
   const filteredDataRows = filterSkippedTaskRows(dataRows, taskIdColIdx, skipColIdx);
 
   let projectIdVal = '未知项目ID';
@@ -844,13 +846,19 @@ function analyzeWorkbookRows(rows, fileName, aggregate) {
 
   aggregate.fileCount += 1;
   aggregate.projectIds.push(projectIdVal);
-  aggregate.totalDataRowCount += dataRows.length;
 
   dataRows.forEach(row => {
-    const isCorrect = stepCorrectColIdx !== -1 && getCellText(row, stepCorrectColIdx) === '正确';
-    const isReturnError = stepReturnColIdx !== -1 && getCellText(row, stepReturnColIdx) === '错误页面引导点击返回了';
-    if (isCorrect || isReturnError) {
-      aggregate.stepAccuracyNumerator += 1;
+    const correctVal = stepCorrectColIdx !== -1 ? getCellText(row, stepCorrectColIdx) : '';
+    const incorrectVal = stepIncorrectColIdx !== -1 ? getCellText(row, stepIncorrectColIdx) : '';
+    const returnVal = stepReturnColIdx !== -1 ? getCellText(row, stepReturnColIdx) : '';
+    const afterWrongVal = stepAfterWrongColIdx !== -1 ? getCellText(row, stepAfterWrongColIdx) : '';
+    const hasAnyStepJudgement = !!(correctVal || incorrectVal || returnVal || afterWrongVal);
+
+    if (hasAnyStepJudgement) {
+      aggregate.stepAccuracyBaseCount += 1;
+    }
+    if (correctVal === '正确') {
+      aggregate.stepAccuracyCorrectCount += 1;
     }
   });
 
@@ -916,7 +924,7 @@ async function startAnalysis() {
       results,
       totalTaskCount,
       anomalyTaskCount,
-      stepAccuracyRate: aggregate.totalDataRowCount > 0 ? (aggregate.stepAccuracyNumerator / aggregate.totalDataRowCount * 100) : 0,
+      stepAccuracyRate: aggregate.stepAccuracyBaseCount > 0 ? (aggregate.stepAccuracyCorrectCount / aggregate.stepAccuracyBaseCount * 100) : 0,
       missingCols: aggregate.missingCols,
       projectIdVal: formatProjectDisplay(aggregate.projectIds, aggregate.fileCount),
       uniqueTaskCount: totalTaskCount,
