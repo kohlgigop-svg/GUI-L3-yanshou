@@ -813,7 +813,9 @@ function createAggregateState() {
     foundKeys: new Set(),
     totalNonEmptyCount: 0,
     missingCols: [],
-    taskMap: new Map()
+    taskMap: new Map(),
+    stepAccuracyNumerator: 0,
+    totalDataRowCount: 0
   };
 }
 
@@ -828,6 +830,8 @@ function analyzeWorkbookRows(rows, fileName, aggregate) {
   const taskIdColIdx = headers.findIndex(h => normalize(h || '') === normalize('任务id') || normalize(h || '') === normalize('任务ID'));
   const taskNameColIdx = headers.findIndex(h => normalize(h || '') === normalize('任务名称'));
   const skipColIdx = headers.findIndex(h => normalize(h || '') === normalize('是否跳过'));
+  const stepCorrectColIdx = headers.findIndex(h => normalize(h || '') === normalize('step 正确性判断:正确'));
+  const stepReturnColIdx = headers.findIndex(h => normalize(h || '') === normalize('step 正确性判断:错误页面引导点击返回了'));
   const filteredDataRows = filterSkippedTaskRows(dataRows, taskIdColIdx, skipColIdx);
 
   let projectIdVal = '未知项目ID';
@@ -840,6 +844,15 @@ function analyzeWorkbookRows(rows, fileName, aggregate) {
 
   aggregate.fileCount += 1;
   aggregate.projectIds.push(projectIdVal);
+  aggregate.totalDataRowCount += dataRows.length;
+
+  dataRows.forEach(row => {
+    const isCorrect = stepCorrectColIdx !== -1 && getCellText(row, stepCorrectColIdx) === '正确';
+    const isReturnError = stepReturnColIdx !== -1 && getCellText(row, stepReturnColIdx) === '错误页面引导点击返回了';
+    if (isCorrect || isReturnError) {
+      aggregate.stepAccuracyNumerator += 1;
+    }
+  });
 
   if (taskIdColIdx !== -1) {
     let currentTaskId = '';
@@ -903,6 +916,7 @@ async function startAnalysis() {
       results,
       totalTaskCount,
       anomalyTaskCount,
+      stepAccuracyRate: aggregate.totalDataRowCount > 0 ? (aggregate.stepAccuracyNumerator / aggregate.totalDataRowCount * 100) : 0,
       missingCols: aggregate.missingCols,
       projectIdVal: formatProjectDisplay(aggregate.projectIds, aggregate.fileCount),
       uniqueTaskCount: totalTaskCount,
@@ -1035,7 +1049,7 @@ function renderTaskTables(successTasks, failedTasks, downloadBaseName) {
   });
 }
 
-function renderResult({ results, totalTaskCount, anomalyTaskCount, missingCols, projectIdVal, uniqueTaskCount, successTasks, failedTasks, fileCount, downloadBaseName }) {
+function renderResult({ results, totalTaskCount, anomalyTaskCount, stepAccuracyRate, missingCols, projectIdVal, uniqueTaskCount, successTasks, failedTasks, fileCount, downloadBaseName }) {
   const now = new Date().toLocaleString('zh-CN', { hour12: false });
   document.getElementById('report-meta').textContent = fileCount > 1
     ? `数据源：共 ${fileCount} 个文件｜项目ID：${projectIdVal}｜统计时间：${now}`
@@ -1050,6 +1064,10 @@ function renderResult({ results, totalTaskCount, anomalyTaskCount, missingCols, 
     <div class="summary-card" style="max-width: 260px;">
       <div class="s-num">${uniqueTaskCount}</div>
       <div class="s-label">队列数据量</div>
+    </div>
+    <div class="summary-card" style="max-width: 260px;">
+      <div class="s-num">${stepAccuracyRate.toFixed(2)}%</div>
+      <div class="s-label">单步骤正确率</div>
     </div>
   `;
 
